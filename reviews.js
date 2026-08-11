@@ -1,1 +1,1 @@
-window.REVIEWS = [];
+window.REVIEWS = [["pl_0018",1786420221585,2,0]];
