@@ -2,7 +2,7 @@
  * Powłoka aplikacji z pamięci podręcznej, dane najpierw z sieci.
  * Po zmianie któregokolwiek pliku podnieś numer wersji.
  */
-var VERSION = 'v1';
+var VERSION = 'v2';
 var SHELL = 'shell-' + VERSION;
 var DATA = 'data-' + VERSION;
 

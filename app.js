@@ -28,7 +28,8 @@
     dirtyCards: false,
     sessionDone: 0,
     sessionRight: 0,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    dayKey: null
   };
 
   var DEFAULT_SETTINGS = {
@@ -954,18 +955,72 @@
     buildQueue();
     S.current = pickNext();
     switchView('learn');
+    S.dayKey = todayKey();
 
     if (S.settings.autoSync && ghReady()) pull(true);
 
-    // Wysyłka przy chowaniu aplikacji — sesja przerwana w połowie nie ginie.
+    /* Aplikacja dodana do ekranu głównego bywa zamrażana zamiast zamykana —
+       na iOS potrafi wisieć w tle tygodniami, więc init() nie wykona się ponownie.
+       Bez tego kolejka i licznik nowych kart zostają na dniu, w którym wystartowała. */
+    function resume() {
+      var newDay = todayKey() !== S.dayKey;
+      S.dayKey = todayKey();
+
+      if (newDay) {
+        // Nowa doba: licznik nowych kart startuje od zera, sesja liczona od nowa.
+        S.sessionDone = 0;
+        S.sessionRight = 0;
+        S.startedAt = Date.now();
+      }
+
+      buildQueue();
+      if (!S.current || newDay) {
+        S.revealed = false;
+        S.typedResult = null;
+        S.current = pickNext();
+      }
+      if (S.view === 'learn') render();
+
+      if (S.settings.autoSync && ghReady()) pull(true);
+    }
+
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden' && S.dirtyProgress && S.settings.autoSync && ghReady()) {
-        push(true);
+      if (document.visibilityState === 'hidden') {
+        // Sesja przerwana w połowie nie ginie.
+        if (S.dirtyProgress && S.settings.autoSync && ghReady()) push(true);
+      } else {
+        resume();
       }
     });
 
+    // Safari na iOS nie zawsze odpala visibilitychange przy powrocie z tła.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) resume(); });
+    window.addEventListener('focus', resume);
+
+    /* Zapas na wypadek sesji trwającej przez północ. */
+    setInterval(function () {
+      if (todayKey() !== S.dayKey && document.visibilityState === 'visible') resume();
+    }, 60000);
+
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        // Sprawdzenie aktualizacji przy starcie i przy każdym powrocie do aplikacji.
+        reg.update().catch(function () {});
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
+        // Nowa wersja przejmuje kontrolę dopiero po przeładowaniu strony.
+        reg.addEventListener('updatefound', function () {
+          var sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', function () {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              toast('Jest nowa wersja — uruchamiam ponownie');
+              setTimeout(function () { location.reload(); }, 1800);
+            }
+          });
+        });
+      }).catch(function () {});
     }
 
     if ('speechSynthesis' in window) speechSynthesis.getVoices();
